@@ -79,4 +79,19 @@ class RmsgClientTest < Minitest::Test
     r = Rmsg.send(@queue, {}, {redis: @client_redis})
     assert_equal r, "1"
   end
+
+  def test_responseless_messages
+    start_time = Time.now
+    @server = Thread.new do
+      Rmsg.serve(@queue, redis: @server_redis) do |q, msg|
+        sleep 10
+        "42"
+      end
+    end
+
+    Rmsg.send(@queue, {}, {redis: @client_redis, wait: false})
+
+    finish_time = Time.now
+    assert finish_time - start_time < 1
+  end
 end

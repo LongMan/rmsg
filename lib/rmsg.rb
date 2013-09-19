@@ -31,10 +31,16 @@ module Rmsg
   def send(queue, message, options={})
     redis = options[:redis] || Redis.current
     timeout = options[:timeout]
-    response_list = SecureRandom.uuid
+    responseless = options.has_key?(:wait) && !options[:wait]
+    response_list = responseless ? nil : SecureRandom.uuid
     response_expire_in = options[:response_expire_in]
 
+    # sending message
     redis.rpush(queue, Yajl.dump({b: message, h: { l: response_list, e: response_expire_in}}))
+
+    return true if responseless
+
+    # waiting for response
     q, response = redis.blpop(response_list, timeout: timeout)
     raise Rmsg::TimeoutError if q.nil? && response.nil?
     redis.del(response_list)
@@ -65,13 +71,17 @@ module Rmsg
       queue, msg = redis.blpop queues
       msg = Yajl.load(msg)
       respond_to = (msg["h"] || {})["l"]
-      response_expire_time = (msg["h"] || {})["e"] || 60*10
+      # default expire for response key is 1 second
+      response_expire_time = (msg["h"] || {})["e"] || 1
+
       response = begin
+        # success response have no header
         { b: yield(queue, msg["b"]) }
       rescue => e
-        # if something went wrong responding with error
+        # if something went wrong responding with error and blank body
         { h: {error: e.to_s}, b: "" }
       end
+
       if respond_to
         redis.rpush(respond_to, Yajl.dump(response))
         redis.pexpire(respond_to, (response_expire_time*1000).to_i)
