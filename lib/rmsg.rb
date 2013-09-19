@@ -43,7 +43,7 @@ module Rmsg
     # waiting for response
     q, response = redis.blpop(response_list, timeout: timeout)
     raise Rmsg::TimeoutError if q.nil? && response.nil?
-    redis.del(response_list)
+
     response = Yajl.load(response)
     if response["h"] && response["h"]["error"]
       raise Rmsg::RequestProcessingError, response["h"]["error"]
